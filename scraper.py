@@ -12,7 +12,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import TimeoutException, WebDriverException
 
 
 class LandWatchScraper:
@@ -57,13 +57,21 @@ class LandWatchScraper:
             chrome_options.add_argument('--disable-setuid-sandbox')
             chrome_options.add_argument('--window-size=1920,1080')
             chrome_options.add_argument(f'user-agent={config.USER_AGENT}')
-            chrome_options.add_argument('--remote-debugging-port=9222')
             chrome_options.add_argument('--ignore-certificate-errors')
             chrome_options.add_argument('--ignore-ssl-errors')
             
-            # Use system chromedriver with explicit service
-            service = Service('/usr/bin/chromedriver')
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            # Try to use webdriver-manager first, fallback to system chromedriver
+            try:
+                from webdriver_manager.chrome import ChromeDriverManager
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            except Exception:
+                # Fallback to system chromedriver
+                import shutil
+                chromedriver_path = shutil.which('chromedriver') or '/usr/bin/chromedriver'
+                service = Service(chromedriver_path)
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            
             print("Selenium WebDriver initialized successfully")
         except Exception as e:
             print(f"Failed to initialize Selenium: {e}")
@@ -108,7 +116,7 @@ class LandWatchScraper:
                     
                     try:
                         self.driver.get(page_url)
-                    except:
+                    except TimeoutException:
                         # Page load timeout - but we might have partial content
                         print(f"  Page load timed out, checking for partial content...")
                     
@@ -123,7 +131,7 @@ class LandWatchScraper:
                         print(f"  Got error or blocked page, falling back to requests...")
                         html_content = None
                     
-                except Exception as e:
+                except (TimeoutException, WebDriverException) as e:
                     print(f"  Selenium error: {e}")
                     print(f"  Falling back to requests...")
                     html_content = None
@@ -337,5 +345,5 @@ class LandWatchScraper:
         if self.driver:
             try:
                 self.driver.quit()
-            except:
-                pass
+            except (WebDriverException, Exception) as e:
+                print(f"Warning: Error closing WebDriver: {e}")
