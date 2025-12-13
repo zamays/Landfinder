@@ -128,7 +128,7 @@ class LandWatchScraper:
                 listing['url'] = config.BASE_URL + '/' + href
         
         # Extract price
-        price_elem = card.find(string=re.compile(r'\$[\d,]+'))
+        price_elem = card.find(string=re.compile(r'\$[\d,]+(?:\.\d{2})?'))
         if not price_elem:
             price_elem = card.find(class_=re.compile(r'.*price.*', re.I))
         if price_elem:

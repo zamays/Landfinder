@@ -131,7 +131,12 @@ class Database:
     def query_by_price_range(self, min_price: float, max_price: float) -> List[Dict]:
         """Query listings within a price range."""
         self.connect()
-        query = "SELECT * FROM listings WHERE CAST(REPLACE(REPLACE(price, '$', ''), ',', '') AS REAL) BETWEEN ? AND ?"
+        query = """
+        SELECT * FROM listings 
+        WHERE price IS NOT NULL 
+        AND price LIKE '$%'
+        AND CAST(REPLACE(REPLACE(price, '$', ''), ',', '') AS REAL) BETWEEN ? AND ?
+        """
         self.cursor.execute(query, (min_price, max_price))
         rows = self.cursor.fetchall()
         self.close()
@@ -154,10 +159,22 @@ class Database:
         """Query listings by acreage."""
         self.connect()
         if max_acres:
-            query = "SELECT * FROM listings WHERE CAST(REPLACE(acres, ',', '') AS REAL) BETWEEN ? AND ?"
+            query = """
+            SELECT * FROM listings 
+            WHERE acres IS NOT NULL 
+            AND acres NOT LIKE '%N/A%' 
+            AND acres NOT LIKE '%TBD%'
+            AND CAST(REPLACE(acres, ',', '') AS REAL) BETWEEN ? AND ?
+            """
             self.cursor.execute(query, (min_acres, max_acres))
         else:
-            query = "SELECT * FROM listings WHERE CAST(REPLACE(acres, ',', '') AS REAL) >= ?"
+            query = """
+            SELECT * FROM listings 
+            WHERE acres IS NOT NULL 
+            AND acres NOT LIKE '%N/A%' 
+            AND acres NOT LIKE '%TBD%'
+            AND CAST(REPLACE(acres, ',', '') AS REAL) >= ?
+            """
             self.cursor.execute(query, (min_acres,))
         rows = self.cursor.fetchall()
         self.close()

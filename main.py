@@ -81,7 +81,7 @@ def query_database(args):
     
     elif args.price_min or args.price_max:
         min_price = args.price_min or 0
-        max_price = args.price_max or float('inf')
+        max_price = args.price_max or 999999999  # Use large finite number instead of infinity
         listings = db.query_by_price_range(min_price, max_price)
         print(f"\nFound {len(listings)} listings in price range ${min_price:,.0f} - ${max_price:,.0f}:\n")
         for listing in listings:
