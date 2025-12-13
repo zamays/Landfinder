@@ -13,6 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
+import undetected_chromedriver as uc
 
 
 class LandWatchScraper:
@@ -44,40 +45,68 @@ class LandWatchScraper:
             self._init_selenium()
     
     def _init_selenium(self):
-        """Initialize Selenium WebDriver."""
+        """Initialize Selenium WebDriver with undetected-chromedriver."""
         try:
-            print("Initializing Selenium WebDriver...")
-            chrome_options = Options()
-            chrome_options.add_argument('--headless=new')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--disable-software-rasterizer')
-            chrome_options.add_argument('--disable-extensions')
-            chrome_options.add_argument('--disable-setuid-sandbox')
-            chrome_options.add_argument('--window-size=1920,1080')
-            chrome_options.add_argument(f'user-agent={config.USER_AGENT}')
-            chrome_options.add_argument('--ignore-certificate-errors')
-            chrome_options.add_argument('--ignore-ssl-errors')
+            print("Initializing undetected-chromedriver (anti-bot detection)...")
             
-            # Try to use webdriver-manager first, fallback to system chromedriver
+            # Copy chromedriver to a writable location
+            import shutil
+            import os
+            tmp_driver = '/tmp/chromedriver_uc'
+            system_driver = shutil.which('chromedriver') or '/usr/bin/chromedriver'
+            
+            if not os.path.exists(tmp_driver):
+                shutil.copy(system_driver, tmp_driver)
+                os.chmod(tmp_driver, 0o755)
+            
+            # Configure options for undetected-chromedriver
+            options = uc.ChromeOptions()
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--window-size=1920,1080')
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            
+            # Initialize undetected-chromedriver with headless mode
+            self.driver = uc.Chrome(
+                options=options, 
+                driver_executable_path=tmp_driver,
+                use_subprocess=True,
+                headless=True
+            )
+            
+            # Additional anti-detection measures
+            self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                'source': '''
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    })
+                '''
+            })
+            
+            print("Undetected-chromedriver initialized successfully")
+        except Exception as e:
+            print(f"Failed to initialize undetected-chromedriver: {e}")
+            print("Trying standard Selenium as fallback...")
+            
             try:
-                from webdriver_manager.chrome import ChromeDriverManager
-                service = Service(ChromeDriverManager().install())
-                self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            except Exception:
-                # Fallback to system chromedriver
+                chrome_options = Options()
+                chrome_options.add_argument('--headless=new')
+                chrome_options.add_argument('--no-sandbox')
+                chrome_options.add_argument('--disable-dev-shm-usage')
+                chrome_options.add_argument('--disable-gpu')
+                chrome_options.add_argument('--window-size=1920,1080')
+                chrome_options.add_argument(f'user-agent={config.USER_AGENT}')
+                
                 import shutil
                 chromedriver_path = shutil.which('chromedriver') or '/usr/bin/chromedriver'
                 service = Service(chromedriver_path)
                 self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            
-            print("Selenium WebDriver initialized successfully")
-        except Exception as e:
-            print(f"Failed to initialize Selenium: {e}")
-            print("Falling back to requests library")
-            self.use_selenium = False
-            self.driver = None
+                print("Standard Selenium initialized successfully")
+            except Exception as e2:
+                print(f"Failed to initialize Selenium: {e2}")
+                print("Falling back to requests library")
+                self.use_selenium = False
+                self.driver = None
 
     def search_listings(self, state: str = None, max_pages: int = 1) -> List[Dict]:
         """
@@ -111,29 +140,41 @@ class LandWatchScraper:
             # Try Selenium first if available
             if self.use_selenium and self.driver:
                 try:
-                    print(f"  Using Selenium WebDriver...")
-                    self.driver.set_page_load_timeout(30)  # Set page load timeout
+                    print(f"  Using undetected-chromedriver...")
+                    self.driver.set_page_load_timeout(45)  # Longer timeout for bot detection bypass
                     
                     try:
                         self.driver.get(page_url)
+                        # Wait longer for JavaScript to execute and page to fully load
+                        print(f"  Page loaded, waiting for content to render...")
+                        time.sleep(8)  # Longer wait for dynamic content
                     except TimeoutException:
                         # Page load timeout - but we might have partial content
                         print(f"  Page load timed out, checking for partial content...")
-                    
-                    # Wait a bit for any dynamic content
-                    time.sleep(3)
+                        time.sleep(3)
                     
                     html_content = self.driver.page_source
-                    print(f"  Page loaded via Selenium ({len(html_content)} characters)")
+                    print(f"  Retrieved {len(html_content)} characters from page")
                     
                     # Check if we got a real page or an error page
-                    if 'Privacy error' in html_content or 'Access Denied' in html_content or len(html_content) < 1000:
-                        print(f"  Got error or blocked page, falling back to requests...")
+                    if 'Privacy error' in html_content:
+                        print(f"  Got SSL/Privacy error page, trying to proceed anyway...")
                         html_content = None
+                    elif 'Access Denied' in html_content or 'Blocked' in html_content:
+                        print(f"  Got access denied page...")
+                        html_content = None
+                    elif len(html_content) < 1000:
+                        print(f"  Page too small, likely blocked...")
+                        html_content = None
+                    elif 'land' in html_content.lower() or 'property' in html_content.lower():
+                        print(f"  ✓ Got content with property data!")
+                    else:
+                        print(f"  Page content unclear, will attempt to parse...")
                     
                 except (TimeoutException, WebDriverException) as e:
                     print(f"  Selenium error: {e}")
                     print(f"  Falling back to requests...")
+                    html_content = None
                     html_content = None
             
             # Fallback to requests if Selenium failed or not available

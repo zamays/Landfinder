@@ -4,7 +4,8 @@ A helpful application for scraping real estate websites so you can search throug
 
 ## Features
 
-- **Web Scraper**: Scrapes land listings from LandWatch.com
+- **Web Scraper**: Scrapes land listings from LandWatch.com (with anti-bot detection)
+- **Manual Import**: Import data from JSON/CSV files
 - **Local Database**: Stores all listing data in a SQLite database
 - **Query Interface**: Easy-to-use command-line interface for querying listings
 - **Flexible Filtering**: Filter by location, price, acreage, and more
@@ -22,11 +23,33 @@ cd landFinder
 pip install -r requirements.txt
 ```
 
+## ⚠️ Important Note About Web Scraping
+
+LandWatch.com implements advanced bot detection that blocks most automated scraping attempts. This project includes:
+- **undetected-chromedriver** for bypassing some detection
+- **Manual data collection methods** (FREE and effective)
+- **Data import tools** for JSON/CSV files
+
+**Recommended Approach**: Use the manual collection methods described in `MANUAL_COLLECTION.md` - they're free, legal, and actually work!
+
 ## Usage
 
-### Scraping Listings
+### Method 1: Manual Data Collection (Recommended - FREE & Works!)
 
-Scrape listings from LandWatch.com:
+See [MANUAL_COLLECTION.md](MANUAL_COLLECTION.md) for detailed instructions on:
+- Using browser DevTools to extract data (works perfectly!)
+- Browser extensions for data collection
+- CSV export methods
+
+Then import your data:
+```bash
+python import_data.py --json your_listings.json
+python import_data.py --csv your_listings.csv
+```
+
+### Method 2: Automated Scraping (May Be Blocked)
+
+Attempt automated scraping with anti-bot detection:
 
 ```bash
 # Scrape 1 page of listings (any state)
