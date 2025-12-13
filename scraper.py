@@ -6,21 +6,70 @@ import time
 from typing import List, Dict, Optional
 import config
 import re
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 
 
 class LandWatchScraper:
     """Scraper for LandWatch.com land listings."""
 
-    def __init__(self):
+    def __init__(self, use_selenium: bool = True):
         """Initialize the scraper."""
+        self.use_selenium = use_selenium
+        self.driver = None
+        
+        # Initialize requests session as fallback
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': config.USER_AGENT,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
         })
+        
+        # Initialize Selenium driver if needed
+        if self.use_selenium:
+            self._init_selenium()
+    
+    def _init_selenium(self):
+        """Initialize Selenium WebDriver."""
+        try:
+            print("Initializing Selenium WebDriver...")
+            chrome_options = Options()
+            chrome_options.add_argument('--headless=new')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--disable-software-rasterizer')
+            chrome_options.add_argument('--disable-extensions')
+            chrome_options.add_argument('--disable-setuid-sandbox')
+            chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options.add_argument(f'user-agent={config.USER_AGENT}')
+            chrome_options.add_argument('--remote-debugging-port=9222')
+            chrome_options.add_argument('--ignore-certificate-errors')
+            chrome_options.add_argument('--ignore-ssl-errors')
+            
+            # Use system chromedriver with explicit service
+            service = Service('/usr/bin/chromedriver')
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            print("Selenium WebDriver initialized successfully")
+        except Exception as e:
+            print(f"Failed to initialize Selenium: {e}")
+            print("Falling back to requests library")
+            self.use_selenium = False
+            self.driver = None
 
     def search_listings(self, state: str = None, max_pages: int = 1) -> List[Dict]:
         """
@@ -49,22 +98,73 @@ class LandWatchScraper:
             # Add page parameter if not first page
             page_url = search_url if page == 1 else f"{search_url}/page-{page}"
             
-            try:
-                response = self.session.get(page_url, timeout=config.REQUEST_TIMEOUT)
-                response.raise_for_status()
-                
-                # Parse the page
-                page_listings = self._parse_search_page(response.text, page_url)
+            html_content = None
+            
+            # Try Selenium first if available
+            if self.use_selenium and self.driver:
+                try:
+                    print(f"  Using Selenium WebDriver...")
+                    self.driver.set_page_load_timeout(30)  # Set page load timeout
+                    
+                    try:
+                        self.driver.get(page_url)
+                    except:
+                        # Page load timeout - but we might have partial content
+                        print(f"  Page load timed out, checking for partial content...")
+                    
+                    # Wait a bit for any dynamic content
+                    time.sleep(3)
+                    
+                    html_content = self.driver.page_source
+                    print(f"  Page loaded via Selenium ({len(html_content)} characters)")
+                    
+                    # Check if we got a real page or an error page
+                    if 'Privacy error' in html_content or 'Access Denied' in html_content or len(html_content) < 1000:
+                        print(f"  Got error or blocked page, falling back to requests...")
+                        html_content = None
+                    
+                except Exception as e:
+                    print(f"  Selenium error: {e}")
+                    print(f"  Falling back to requests...")
+                    html_content = None
+            
+            # Fallback to requests if Selenium failed or not available
+            if html_content is None:
+                for attempt in range(config.MAX_RETRIES):
+                    try:
+                        print(f"  Attempt {attempt + 1}/{config.MAX_RETRIES} with requests...")
+                        response = self.session.get(page_url, timeout=config.REQUEST_TIMEOUT)
+                        response.raise_for_status()
+                        html_content = response.text
+                        print(f"  Page loaded successfully via requests")
+                        break  # Success, exit retry loop
+                        
+                    except requests.exceptions.Timeout as e:
+                        print(f"  Timeout on attempt {attempt + 1}: {e}")
+                        if attempt < config.MAX_RETRIES - 1:
+                            wait_time = config.RETRY_DELAY * (attempt + 1)
+                            print(f"  Waiting {wait_time} seconds before retry...")
+                            time.sleep(wait_time)
+                        else:
+                            print(f"  Max retries reached for page {page}")
+                            return listings
+                            
+                    except Exception as e:
+                        print(f"  Error on attempt {attempt + 1}: {e}")
+                        if attempt >= config.MAX_RETRIES - 1:
+                            return listings
+            
+            # Parse the page if we got content
+            if html_content:
+                page_listings = self._parse_search_page(html_content, page_url)
                 listings.extend(page_listings)
-                
                 print(f"Found {len(page_listings)} listings on page {page}")
                 
                 # Be respectful - delay between requests
                 if page < max_pages:
                     time.sleep(config.REQUEST_DELAY)
-                    
-            except Exception as e:
-                print(f"Error scraping page {page}: {e}")
+            else:
+                print(f"Failed to get content for page {page}")
                 break
         
         return listings
@@ -232,5 +332,10 @@ class LandWatchScraper:
             return {}
 
     def close(self):
-        """Close the session."""
+        """Close the session and browser."""
         self.session.close()
+        if self.driver:
+            try:
+                self.driver.quit()
+            except:
+                pass

@@ -13,8 +13,12 @@ DEFAULT_SEARCH_PARAMS = {
 }
 
 # Scraping settings
-REQUEST_TIMEOUT = 30
+REQUEST_TIMEOUT = 60
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # Delay between requests (in seconds) to be respectful
-REQUEST_DELAY = 2
+REQUEST_DELAY = 3
+
+# Retry settings
+MAX_RETRIES = 3
+RETRY_DELAY = 5
