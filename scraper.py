@@ -55,6 +55,10 @@ class LandWatchScraper:
             tmp_driver = '/tmp/chromedriver_uc'
             system_driver = shutil.which('chromedriver') or '/usr/bin/chromedriver'
             
+            # Verify system driver exists before copying
+            if not os.path.exists(system_driver):
+                raise FileNotFoundError(f"ChromeDriver not found at {system_driver}")
+            
             if not os.path.exists(tmp_driver):
                 shutil.copy(system_driver, tmp_driver)
                 os.chmod(tmp_driver, 0o755)
@@ -74,14 +78,18 @@ class LandWatchScraper:
                 headless=True
             )
             
-            # Additional anti-detection measures
-            self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-                'source': '''
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    })
-                '''
-            })
+            # Additional anti-detection measures with error handling
+            try:
+                self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                    'source': '''
+                        Object.defineProperty(navigator, 'webdriver', {
+                            get: () => undefined
+                        })
+                    '''
+                })
+            except Exception as cdp_error:
+                print(f"Warning: Could not execute CDP command: {cdp_error}")
+                # Continue anyway - driver is still functional
             
             print("Undetected-chromedriver initialized successfully")
         except Exception as e:
@@ -174,7 +182,6 @@ class LandWatchScraper:
                 except (TimeoutException, WebDriverException) as e:
                     print(f"  Selenium error: {e}")
                     print(f"  Falling back to requests...")
-                    html_content = None
                     html_content = None
             
             # Fallback to requests if Selenium failed or not available
