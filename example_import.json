@@ -1,0 +1,22 @@
+[
+  {
+    "listing_id": "example_001",
+    "title": "Example: 50 Acres Texas Ranch Land",
+    "price": "$400,000",
+    "acres": "50",
+    "location": "Example City, TX",
+    "url": "https://www.landwatch.com/example",
+    "image_url": "https://example.com/image.jpg",
+    "description": "This is an example listing to demonstrate the import format"
+  },
+  {
+    "listing_id": "example_002",
+    "title": "Example: 10 Acres Hunting Property",
+    "price": "$125,000",
+    "acres": "10",
+    "location": "Example County, TX",
+    "url": "https://www.landwatch.com/example2",
+    "image_url": "https://example.com/image2.jpg",
+    "description": "Another example listing"
+  }
+]
